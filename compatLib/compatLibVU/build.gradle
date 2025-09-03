@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'app.desktop.compatlib.fourteen'
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+addFrameworkJar('framework-14.jar')
+
+dependencies {
+    api projects.compatLib.compatLibVT
+}

@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'app.desktop.compatlib.fifteen'
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+addFrameworkJar('framework-15.jar')
+
+dependencies {
+    api projects.compatLib.compatLibVU
+}

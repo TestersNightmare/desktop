@@ -1,0 +1,181 @@
+pluginManagement {
+    repositories {
+        // 1. 确保包含 Gradle 插件门户
+        gradlePluginPortal()
+
+        // 2. 添加 Google Maven 仓库
+        maven { url "https://dl.google.com/dl/android/maven2/" }
+
+        // 3. 阿里云镜像配置
+        def useAlibabaMirror = providers.gradleProperty('alibabaMirrorEnabled').orElse('true').get().toBoolean()
+        if (useAlibabaMirror) {
+            maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+        }
+    }
+}
+
+// https://docs.gradle.com/enterprise/gradle-plugin/
+plugins {
+    id "com.gradle.develocity" version "3.19.2"
+}
+
+rootProject.name = 'desktop'
+def isCI = providers.environmentVariable('CI').present
+
+develocity {
+    buildScan {
+        termsOfUseUrl = "https://gradle.com/terms-of-service"
+        termsOfUseAgree = "yes"
+        publishing {
+            onlyIf { isCI }
+        }
+    }
+}
+
+dependencyResolutionManagement {
+    // 允许项目级仓库
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+
+    repositories {
+        // 添加 Google Maven 仓库
+        maven { url "https://dl.google.com/dl/android/maven2/" }
+
+        // 阿里云镜像配置
+        def useAlibabaMirror = providers.gradleProperty('alibabaMirrorEnabled').orElse('true').get().toBoolean()
+        if (useAlibabaMirror) {
+            maven { url 'https://maven.aliyun.com/repository/google' }
+            maven { url 'https://maven.aliyun.com/repository/public' }
+            maven { url 'https://maven.aliyun.com/repository/jcenter' }
+        } else {
+            google()
+            mavenCentral()
+            jcenter()
+        }
+
+        // 其他自定义仓库
+        flatDir {
+            dirs 'prebuilts/libs'
+        }
+        maven { url 'https://jitpack.io' }
+
+
+ 	//topon thinkup
+        //TU(Core)
+        maven {
+            url "https://jfrog.anythinktech.com/artifactory/overseas_sdk"
+        }
+
+        //Maio
+        maven {
+            url "https://imobile-maio.github.io/maven"
+        }
+
+        //Ironsource
+        maven {
+            url "https://android-sdk.is.com/"
+        }
+
+        //Pubnative
+        maven {
+            url "https://verve.jfrog.io/artifactory/verve-gradle-release"
+        }
+
+        //Taurusx
+        maven {
+            url "https://bitbucket.org/sdkcenter/sdkcenter/raw/release"
+        }
+
+        //Smaato
+        maven {
+            url "https://s3.amazonaws.com/smaato-sdk-releases/"
+        }
+
+        //Pangle
+        maven {
+            url "https://artifact.bytedance.com/repository/pangle"
+        }
+
+        //Huawei
+        maven {
+            url "https://developer.huawei.com/repo/"
+        }
+
+        //Mintegral
+        maven {
+            url "https://dl-maven-android.mintegral.com/repository/mbridge_android_sdk_oversea"
+        }
+
+        //Bidmachine
+        maven {
+            url "https://artifactory.bidmachine.io/bidmachine"
+        }
+
+        //Chartboost
+        maven {
+            url "https://cboost.jfrog.io/artifactory/chartboost-ads"
+        }
+        maven {
+            url "https://cboost.jfrog.io/artifactory/chartboost-mediation"
+        }
+
+        //Ogury
+        maven {
+            url "https://maven.ogury.co"
+        }
+    }
+}
+
+enableFeaturePreview("STABLE_CONFIGURATION_CACHE")
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
+include ':iconloaderlib'
+project(':iconloaderlib').projectDir = new File(rootDir, 'platform_frameworks_libs_systemui/iconloaderlib')
+
+include ':searchuilib'
+project(':searchuilib').projectDir = new File(rootDir, 'platform_frameworks_libs_systemui/searchuilib')
+
+include ':animationlib'
+project(':animationlib').projectDir = new File(rootDir, 'platform_frameworks_libs_systemui/animationlib')
+
+include ':hidden-api'
+
+include ':shared'
+project(':shared').projectDir = new File(rootDir, 'systemUI/shared')
+
+include ':plugin'
+project(':plugin').projectDir = new File(rootDir, 'systemUI/plugin')
+
+include ':plugincore'
+project(':plugincore').projectDir = new File(rootDir, 'systemUI/plugin_core')
+
+include ':common'
+project(':common').projectDir = new File(rootDir, 'systemUI/common')
+
+include ':log'
+project(':log').projectDir = new File(rootDir, 'systemUI/log')
+
+include ':anim'
+project(':anim').projectDir = new File(rootDir, 'systemUI/anim')
+
+include ':unfold'
+project(':unfold').projectDir = new File(rootDir, 'systemUI/unfold')
+
+include ':viewcapture'
+project(':viewcapture').projectDir = new File(rootDir, 'systemUI/viewcapture')
+
+
+include ':compatLib'
+include ':compatLib:compatLibVQ'
+include ':compatLib:compatLibVR'
+include ':compatLib:compatLibVS'
+include ':compatLib:compatLibVT'
+include ':compatLib:compatLibVU'
+include ':compatLib:compatLibVV'
+
+include ':baseline-profile'
+
+include ':androidx-lib'
+include ':flags'
+include ':wmshell'

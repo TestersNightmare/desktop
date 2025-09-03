@@ -1,0 +1,23 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace "androidx.dynamicanimation.animation"
+    sourceSets {
+        main {
+            java.srcDirs = ['src']
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        //
+    }
+}
+
+addFrameworkJar('framework-15.jar')
+compileOnlyCommonJars()

@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace "app.desktop.compatlib.twelve"
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+addFrameworkJar('framework-12.jar')
+
+dependencies {
+    api projects.compatLib.compatLibVR
+}

@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'app.desktop.compatlib.thirteen'
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+addFrameworkJar('framework-13.jar')
+
+dependencies {
+    api projects.compatLib.compatLibVS
+}

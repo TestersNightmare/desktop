@@ -1,0 +1,5 @@
+com.miui.calculator
+com.android.launcher4
+com.google.android.calculator
+com.coloros.calculator
+com.android.chrome

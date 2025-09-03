@@ -1,0 +1,3 @@
+contemplation.zen.den
+com.android.launcher4
+com.android.memoryboost

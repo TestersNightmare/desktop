@@ -1,0 +1,10 @@
+<!-- res/values/google-services.xml -->
+<resources>
+    <string name="google_app_id" translatable="false">1:620231299802:android:a564479638b5cde6450be3</string>
+    <string name="gcm_defaultSenderId" translatable="false">620231299802</string>
+    <string name="firebase_database_url" translatable="false">https://desktop-a028f.firebaseio.com</string>
+    <string name="google_api_key" translatable="false">AIzaSyAi76ds29HfHLg1pAa9Q5FXZZqR48Gvf4w</string>
+    <string name="project_id" translatable="false">desktop-a028f</string>
+    <string name="google_storage_bucket" translatable="false">desktop-a028f.firebasestorage.app</string>
+</resources>
+

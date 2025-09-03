@@ -1,0 +1,634 @@
+import java.nio.file.FileSystemException
+import com.android.build.gradle.tasks.AidlCompile
+import org.gradle.api.DefaultTask
+import org.gradle.api.tasks.TaskAction
+import app.cash.licensee.SpdxId
+import com.android.build.gradle.api.AndroidBasePlugin
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+plugins {
+    id 'com.google.gms.google-services' version '4.4.2' apply false
+    id 'com.android.application' version "8.8.0"
+    id 'com.android.library' version "8.8.0" apply false
+    id 'com.android.test' version '8.8.0' apply false
+    id 'androidx.baselineprofile' version '1.3.4'
+    id 'org.jetbrains.kotlin.android' version "2.1.10"
+    id 'org.jetbrains.kotlin.plugin.compose' version "2.1.10"
+    id 'org.jetbrains.kotlin.plugin.parcelize' version "2.1.10"
+    id 'org.jetbrains.kotlin.plugin.serialization' version "2.1.10"
+    id "com.google.devtools.ksp" version "2.1.10-1.0.31"
+    id 'com.google.protobuf' version "0.9.5"
+    id 'app.cash.licensee' version "1.13.0"
+    id 'dev.rikka.tools.refine' version "4.4.0"
+    id 'org.gradle.android.cache-fix' version '3.0.1'
+    id 'com.diffplug.spotless' version '7.0.2'
+}
+
+// =============== GLOBAL FIXES ===============
+allprojects {
+
+    plugins.withType(com.android.build.gradle.api.AndroidBasePlugin).configureEach {
+        android {
+            buildToolsVersion "36.0.0"
+            compileSdk 36
+            defaultConfig {
+                minSdk 26
+                targetSdk 35
+                vectorDrawables.useSupportLibrary = true
+                buildConfigField "int", "QUICKSTEP_MIN_SDK", "26"
+                buildConfigField "int", "QUICKSTEP_MAX_SDK", "36"
+            }
+            lint {
+                abortOnError true
+                checkReleaseBuilds false
+            }
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+        }
+        dependencies {
+            implementation 'androidx.core:core-ktx:1.15.0'
+        }
+    }
+
+    plugins.withId('com.google.protobuf') {
+        def protocVersion = '4.30.2'
+        protobuf {
+            protoc { artifact = "com.google.protobuf:protoc:${protocVersion}" }
+            generateProtoTasks {
+                all().configureEach { task ->
+                    task.builtins {
+                        remove java
+                        java { option "lite" }
+                    }
+                }
+            }
+        }
+        dependencies {
+            implementation "com.google.protobuf:protobuf-javalite:$protocVersion"
+        }
+    }
+
+    plugins.withType(JavaBasePlugin).configureEach {
+        java {
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
+        }
+    }
+
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        compilerOptions {
+            freeCompilerArgs.add("-Xjvm-default=all")
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
+
+    // githuba & githubb 的 Release 
+    tasks.register("assembleTwoRelease") {
+        group = "build"
+        description = "Assemble Lawn+WithQuickstep for githuba & githubb (Release)"
+        dependsOn(
+                "assembleLawnWithQuickstepGithubaRelease",
+                "assembleLawnWithQuickstepGithubbRelease"
+        )
+    }
+
+    ext {
+        FRAMEWORK_PREBUILTS_DIR = "$rootDir/prebuilts/libs"
+        daggerVersion = '2.55'
+
+        addFrameworkJar = { String name ->
+            def frameworkJar = new File(FRAMEWORK_PREBUILTS_DIR, name)
+            if (!frameworkJar.exists()) {
+                throw new IllegalArgumentException("Framework jar path ${frameworkJar.path} doesn't exist")
+            }
+            gradle.projectsEvaluated {
+                tasks.withType(JavaCompile).configureEach {
+                    classpath = files(frameworkJar, classpath)
+                }
+                tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+                    libraries.from(files(frameworkJar))
+                }
+            }
+            dependencies {
+                compileOnly files(frameworkJar)
+            }
+        }
+
+        compileOnlyCommonJars = {
+            dependencies {
+                compileOnly fileTree(dir: FRAMEWORK_PREBUILTS_DIR, include: 'SystemUI-core.jar')
+                compileOnly fileTree(dir: FRAMEWORK_PREBUILTS_DIR, include: 'SystemUI-statsd.jar')
+                compileOnly fileTree(dir: FRAMEWORK_PREBUILTS_DIR, include: 'WindowManager-Shell-15.jar')
+
+                compileOnly projects.compatLib
+                compileOnly projects.compatLib.compatLibVQ
+                compileOnly projects.compatLib.compatLibVR
+                compileOnly projects.compatLib.compatLibVS
+                compileOnly projects.compatLib.compatLibVT
+                compileOnly projects.compatLib.compatLibVU
+                compileOnly projects.compatLib.compatLibVV
+            }
+        }
+    }
+}
+
+final def buildCommit = "miui"
+final def ciBuild = System.getenv("CI") == "true"
+final def ciRef = System.getenv("GITHUB_REF") ?: ""
+final def ciRunNumber = System.getenv("GITHUB_RUN_NUMBER") ?: ""
+final def isReleaseBuild = ciBuild && ciRef.contains("beta")
+final def devReleaseName = ciBuild ? "${ciRunNumber}" : "${buildCommit}"
+final def version = "miOS.2.0"
+final def releaseName = "Beta 1"
+final def versionDisplayName = "${version}"
+final def majorVersion = versionDisplayName.split("\\.")[0]
+
+final def quickstepMinSdk = "29"
+final def quickstepMaxSdk = "35"
+
+android {
+    namespace "com.android.launcher3"
+
+    configurations.configureEach {
+        resolutionStrategy {
+            force "androidx.datastore:datastore-preferences:1.1.0"
+            // 不强制 ads 版本，避免与下方依赖冲突。如需固定请改成同一版本。
+            // force "com.google.android.gms:play-services-ads:24.4.0"
+        }
+    }
+
+    defaultConfig {
+        versionCode 15_00_02_01
+        versionName "${versionDisplayName}"
+
+        buildConfigField "String", "VERSION_DISPLAY_NAME", "\"${versionDisplayName}\""
+        buildConfigField "String", "MAJOR_VERSION", "\"${majorVersion}\""
+        buildConfigField "String", "COMMIT_HASH", "\"${buildCommit}\""
+        buildConfigField "boolean", "ENABLE_AUTO_INSTALLS_LAYOUT", "false"
+
+        manifestPlaceholders.quickstepMinSdk = quickstepMinSdk
+        manifestPlaceholders.quickstepMaxSdk = quickstepMaxSdk
+        buildConfigField "int", "QUICKSTEP_MIN_SDK", quickstepMinSdk
+        buildConfigField "int", "QUICKSTEP_MAX_SDK", quickstepMaxSdk
+    }
+
+    androidResources { generateLocaleConfig true }
+
+    buildFeatures {
+        aidl true
+        buildConfig true
+        resValues true
+    }
+
+    packagingOptions.resources.excludes += [
+            "**/*.proto",
+            "**/*.bin",
+            "**/*.java",
+            "**/*.properties",
+            "**/*.version",
+            "**/*.*_module",
+            "com/**",
+            "google/**",
+            "kotlin/**",
+            "kotlinx/**",
+            "okhttp3/**",
+            "META-INF/services/**",
+            "META-INF/com/**",
+            "META-INF/licenses/**",
+            "META-INF/AL2.0",
+            "META-INF/LGPL2.1",
+    ]
+
+    // Load all proguard configs from AOSP
+    def proguardFilesFromAosp = allprojects
+            .collect { it.file("proguard.flags") }
+            .findAll { it.exists() }
+            .toArray()
+
+    def releaseSigning
+    try {
+        def keystoreProperties = new Properties()
+        keystoreProperties.load(rootProject.file("keystore.properties").newInputStream())
+        releaseSigning = signingConfigs.create("release") {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile rootProject.file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+        }
+    } catch (Exception ignored) {
+        releaseSigning = signingConfigs.debug
+    }
+
+    buildTypes {
+        all {
+            signingConfig releaseSigning
+            pseudoLocalesEnabled true
+        }
+
+        release {
+            resValue("string", "derived_app_name", "Desktop")
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles proguardFilesFromAosp + "proguard.pro"
+        }
+    }
+
+    compileOptions { coreLibraryDesugaringEnabled true }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
+    flavorDimensions += ["app", "recents", "channel"]
+
+    productFlavors {
+        lawn { dimension "app" }
+
+        withQuickstep {
+            dimension "recents"
+            minSdk 26
+        }
+
+        githuba {
+            applicationId 'com.android.launcher4'
+            dimension "channel"
+            versionCode 10010
+            versionName "mi.5.0.0"
+        }
+
+        githubb {
+            applicationId 'com.android.launcher4'
+            dimension "channel"
+            versionCode 10086
+            versionName "me.5.0.0"
+        }
+
+        nightly {
+            applicationId 'app.desktop.nightly'
+            dimension "channel"
+        }
+
+        play {
+            applicationId "app.desktop.play"
+            dimension "channel"
+            isDefault true
+        }
+
+        configureEach {
+            resValue("string", "launcher_component", "${applicationId}/app.desktop.DesktopLauncher")
+        }
+    }
+
+    sourceSets {
+        main {
+            res.srcDirs = ['res']
+            java.srcDirs = ['src', 'src_plugins']
+            jniLibs.srcDirs = ['libs']
+            resources.srcDirs = ['libs']
+            manifest.srcFile 'AndroidManifest-common.xml'
+            proto { srcDirs = ['protos/', 'quickstep/protos_overrides/'] }
+        }
+
+        lawn {
+            java.srcDirs = ['src_flags', 'src_shortcuts_overrides', 'desktop/src', 'tests/shared']
+            aidl.srcDirs = ['desktop/aidl']
+            res.srcDirs = ['desktop/res', 'platform_frameworks_libs_systemui/animationlib/res']
+            manifest.srcFile "desktop/AndroidManifest.xml"
+            assets { srcDirs 'desktop/assets' }
+            proto { srcDirs = ['desktop/protos/'] }
+        }
+
+        lawnWithQuickstepGithuba { manifest.srcFile "quickstep/AndroidManifest-launcher.xml" }
+        lawnWithQuickstepGithubb { manifest.srcFile "quickstep/AndroidManifest-launcher.xml" }
+        lawnWithQuickstepNightly { manifest.srcFile "quickstep/AndroidManifest-launcher.xml" }
+        lawnWithQuickstepPlay    { manifest.srcFile "quickstep/AndroidManifest-launcher.xml" }
+
+        withQuickstep {
+            res.srcDirs = ['quickstep/res', 'quickstep/recents_ui_overrides/res']
+            java.srcDirs = ['quickstep/src', 'quickstep/recents_ui_overrides/src']
+            manifest.srcFile "quickstep/AndroidManifest.xml"
+        }
+    }
+}
+
+composeCompiler {
+    stabilityConfigurationFile = layout.projectDirectory.file("compose_compiler_config.conf")
+    reportsDestination = layout.buildDirectory.dir("compose_build_reports")
+}
+
+addFrameworkJar('framework-15.jar')
+
+dependencies {
+    implementation "androidx.datastore:datastore-preferences:1.1.0"
+
+    implementation projects.iconloaderlib
+    implementation projects.searchuilib
+    implementation projects.animationlib
+
+    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
+    implementation("com.google.firebase:firebase-analytics")
+
+    withQuickstepCompileOnly projects.hiddenApi
+    withQuickstepImplementation projects.shared
+    withQuickstepImplementation projects.anim
+    withQuickstepImplementation projects.unfold
+    withQuickstepImplementation projects.viewcapture
+    withQuickstepImplementation projects.log
+    withQuickstepCompileOnly projects.plugin
+    withQuickstepImplementation projects.plugincore
+    withQuickstepCompileOnly projects.common
+
+    withQuickstepImplementation projects.compatLib
+    withQuickstepImplementation projects.compatLib.compatLibVQ
+    withQuickstepImplementation projects.compatLib.compatLibVR
+    withQuickstepImplementation projects.compatLib.compatLibVS
+    withQuickstepImplementation projects.compatLib.compatLibVT
+    withQuickstepImplementation projects.compatLib.compatLibVU
+    withQuickstepImplementation projects.compatLib.compatLibVV
+    withQuickstepImplementation projects.wmshell
+    withQuickstepImplementation projects.flags
+    implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
+
+    implementation fileTree(dir: FRAMEWORK_PREBUILTS_DIR, include: 'SystemUI-statsd-15.jar')
+    implementation fileTree(dir: FRAMEWORK_PREBUILTS_DIR, include: 'WindowManager-Shell-15.jar')
+    withQuickstepCompileOnly fileTree(dir: FRAMEWORK_PREBUILTS_DIR, include: 'framework-15.jar')
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+    implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
+    baselineProfile projects.baselineProfile
+
+    implementation "androidx.recyclerview:recyclerview:1.4.0"
+    implementation "androidx.preference:preference-ktx:1.2.1"
+
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0'
+    implementation 'com.github.ChickenHook:RestrictionBypass:2.2'
+    implementation 'dev.rikka.tools.refine:runtime:4.4.0'
+
+    implementation platform("androidx.compose:compose-bom:2025.03.01")
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-util"
+    debugImplementation "androidx.compose.ui:ui-tooling"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    implementation "androidx.compose.ui:ui-text-google-fonts"
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.compose.material:material"
+    implementation "androidx.compose.runtime:runtime-livedata"
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material3:material3-window-size-class'
+    implementation "androidx.activity:activity-compose:1.10.1"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7"
+    implementation "androidx.navigation:navigation-compose:2.8.0"
+    implementation "androidx.constraintlayout:constraintlayout:2.2.1"
+    implementation "androidx.palette:palette-ktx:1.0.0"
+    implementation "androidx.slice:slice-core:1.1.0-alpha02"
+    def accompanistVersion = '0.37.2'
+    implementation "com.google.accompanist:accompanist-adaptive:$accompanistVersion"
+    implementation "com.google.accompanist:accompanist-drawablepainter:$accompanistVersion"
+    implementation "com.google.accompanist:accompanist-permissions:$accompanistVersion"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation "io.github.fornewid:material-motion-compose-core:1.2.1"
+    implementation 'dev.kdrag0n:colorkt:1.0.5'
+    implementation 'io.coil-kt:coil-compose:2.7.0'
+    implementation 'me.xdrop:fuzzywuzzy:1.4.0'
+    def optoVersion = "1.0.18"
+    implementation "com.patrykmichalik.opto:domain:$optoVersion"
+    implementation "com.patrykmichalik.opto:core:$optoVersion"
+    implementation "com.patrykmichalik.opto:compose:$optoVersion"
+    implementation "androidx.datastore:datastore-preferences:1.1.0"
+    def retrofitVersion = "2.11.0"
+    implementation "com.squareup.retrofit2:retrofit:$retrofitVersion"
+    implementation "com.squareup.retrofit2:converter-kotlinx-serialization:$retrofitVersion"
+
+    def roomVersion = '2.6.1'
+    implementation "androidx.room:room-runtime:$roomVersion"
+    implementation "androidx.room:room-ktx:$roomVersion"
+    ksp "androidx.room:room-compiler:$roomVersion"
+
+    implementation "com.github.topjohnwu.libsu:service:6.0.0"
+
+    implementation 'com.github.samanzamani:PersianDate:1.7.1'
+    implementation 'com.airbnb.android:lottie:6.6.4'
+    implementation 'sh.calvin.reorderable:reorderable:2.4.3'
+
+    implementation('com.kieronquinn.smartspacer:sdk-client:1.1.2') {
+        exclude group: "com.github.skydoves", module: "balloon"
+    }
+
+    implementation 'io.github.hokofly:hoko-blur:1.5.3'
+    implementation "androidx.window:window:1.3.0"
+
+    // Ad stack
+    api "com.thinkup.sdk:core-tpn:6.5.15"
+    api "com.thinkup.sdk:nativead-tpn:6.5.15"
+    api "com.thinkup.sdk:banner-tpn:6.5.15"
+    api "com.thinkup.sdk:interstitial-tpn:6.5.15"
+    api "com.thinkup.sdk:rewardedvideo-tpn:6.5.15"
+    api "com.thinkup.sdk:splash-tpn:6.5.15"
+
+    api "androidx.appcompat:appcompat:1.6.1"
+    api "androidx.browser:browser:1.4.0"
+
+    api "com.thinkup.sdk:adapter-tpn-admob:6.5.15"
+    api "com.google.android.gms:play-services-ads:24.4.0"
+
+    api "com.thinkup.sdk:adapter-tpn-maio:6.5.15"
+    api "com.maio:android-sdk:1.1.16@aar"
+    api "com.google.android.gms:play-services-ads-identifier:18.0.1"
+
+    api "com.thinkup.sdk:adapter-tpn-startapp:6.5.15"
+    api "com.startapp:inapp-sdk:5.0.2"
+
+    api "com.thinkup.sdk:adapter-tpn-vungle:6.5.15"
+    api "com.vungle:vungle-ads:7.5.0"
+    api "com.google.android.gms:play-services-basement:18.1.0"
+    api "com.google.android.gms:play-services-ads-identifier:18.0.1"
+
+    api "com.thinkup.sdk:adapter-tpn-unityads:6.5.15"
+    api "com.unity3d.ads:unity-ads:4.14.0"
+
+    api "com.thinkup.sdk:adapter-tpn-ironsource:6.5.15"
+    api "com.ironsource.sdk:mediationsdk:8.7.0"
+    api "com.google.android.gms:play-services-appset:16.0.2"
+    api "com.google.android.gms:play-services-ads-identifier:18.0.1"
+    api "com.google.android.gms:play-services-basement:18.1.0"
+
+    api "com.thinkup.sdk:adapter-tpn-bigo:6.5.15"
+    api "com.bigossp:bigo-ads:5.3.0"
+
+    api "com.thinkup.sdk:adapter-tpn-pubnative:6.5.15"
+    api "net.pubnative:hybid.sdk:3.3.0"
+
+    api "com.thinkup.sdk:adapter-tpn-xiaomi:6.5.15"
+    api "com.mi.ads:columbus-sdk:3.5.1.9"
+
+    api "com.thinkup.sdk:adapter-tpn-taurusx:6.5.15"
+    api "com.taurusx.tax:ads:1.6.2"
+
+    api "com.thinkup.sdk:adapter-tpn-smaato:6.5.15"
+    api "com.smaato.android.sdk:smaato-sdk:22.7.2"
+    api "com.smaato.android.sdk:smaato-sdk-banner:22.7.2"
+    api "com.smaato.android.sdk:smaato-sdk-interstitial:22.7.2"
+    api "com.smaato.android.sdk:smaato-sdk-rewarded-ads:22.7.2"
+    api "com.smaato.android.sdk:smaato-sdk-native:22.7.2"
+    api "com.smaato.android.sdk:smaato-sdk-in-app-bidding:22.7.2"
+    api "com.google.android.gms:play-services-ads-identifier:18.0.1"
+
+    api "com.thinkup.sdk:adapter-tpn-pangle:6.5.15"
+    api "com.pangle.global:pag-sdk:7.2.0.6"
+    api "com.google.android.gms:play-services-ads-identifier:18.2.0"
+
+    api "com.thinkup.sdk:adapter-tpn-amazon:6.5.15"
+    api "com.amazon.android:aps-sdk:11.0.1"
+    api "com.iabtcf:iabtcf-decoder:2.0.10"
+
+    api "com.thinkup.sdk:adapter-tpn-googleima:6.5.15"
+    api "com.thinkup.sdk:mediavideo-tpn:6.5.15"
+    api "com.google.ads.interactivemedia.v3:interactivemedia:3.33.0"
+    api "androidx.appcompat:appcompat:1.6.1"
+    api "androidx.browser:browser:1.6.0"
+    api "androidx.media:media:1.6.0"
+
+    api "com.thinkup.sdk:adapter-tpn-kidoz:6.5.15"
+    api "net.kidoz.sdk:kidoz-android-native:8.9.7"
+    api "org.greenrobot:eventbus:3.3.1"
+
+    api "com.thinkup.sdk:adapter-tpn-huawei:6.5.15"
+    api "com.huawei.hms:ads-lite:13.4.78.301"
+
+    api "com.thinkup.sdk:adapter-tpn-facebook:6.5.15"
+    api "com.facebook.android:audience-network-sdk:6.20.0"
+    api "androidx.annotation:annotation:1.0.0"
+
+    api "com.thinkup.sdk:adapter-tpn-inmobi:6.5.15"
+    api "com.inmobi.monetization:inmobi-ads-kotlin:10.8.2"
+
+    api "com.thinkup.sdk:adapter-tpn-applovin:6.5.15"
+    api "com.applovin:applovin-sdk:13.3.1"
+
+    api "com.thinkup.sdk:adapter-tpn-mintegral:6.5.15"
+    api "com.mbridge.msdk.oversea:mbridge_android_sdk:16.9.91"
+    api "androidx.recyclerview:recyclerview:1.1.0"
+
+    api "com.thinkup.sdk:adapter-tpn-bidmachine:6.5.15"
+    api "io.bidmachine:ads:3.1.1"
+
+    api "com.thinkup.sdk:adapter-tpn-chartboost:6.5.15"
+    api "com.chartboost:chartboost-sdk:9.8.3"
+    api "com.chartboost:chartboost-mediation-sdk:4.9.2"
+    api "com.chartboost:chartboost-mediation-adapter-chartboost:4.9.8.1.0"
+    api "com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0"
+    api "com.squareup.okhttp3:logging-interceptor:4.10.0"
+    api "com.squareup.okhttp3:okhttp:4.10.0"
+    api "com.squareup.retrofit2:converter-scalars:2.9.0"
+    api "com.squareup.retrofit2:retrofit:2.9.0"
+    api "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1"
+    api "org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1"
+
+    api "com.thinkup.sdk:adapter-tpn-mytarget:6.5.15"
+    api "com.my.target:mytarget-sdk:5.27.1"
+
+    api "com.thinkup.sdk:adapter-tpn-fyber:6.5.15"
+    api "com.fyber:marketplace-sdk:8.3.7"
+    api "com.google.android.gms:play-services-ads-identifier:18.0.1"
+
+    api "com.thinkup.sdk:adapter-tpn-ogury:6.5.15"
+    api "co.ogury:ogury-sdk:5.2.0"
+
+    api "com.thinkup.sdk:tramini-plugin-tpn:6.5.15"
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.generateKotlin", "true")
+    arg("room.incremental", "true")
+}
+
+spotless {
+    java {
+        target("compatLib/**/src/**/*.java")
+        googleJavaFormat().aosp()
+        removeUnusedImports()
+    }
+    kotlin {
+        target("desktop/src/**/*.kt")
+        ktlint().customRuleSets(["io.nlopez.compose.rules:ktlint:0.4.22"])
+                .editorConfigOverride([
+                        "ktlint_compose_compositionlocal-allowlist": "disabled",
+                        "ktlint_compose_lambda-param-event-trailing": "disabled",
+                        "ktlint_compose_content-slot-reused": "disabled",
+                ])
+    }
+}
+
+licensee {
+    allow(SpdxId.MIT)
+    allow(SpdxId.Apache_20)
+    allow(SpdxId.BSD_3_Clause)
+    allow(SpdxId.GPL_20_or_later)
+    allowDependency("com.github.topjohnwu.libsu", "core", "6.0.0")
+    allowDependency("com.github.topjohnwu.libsu", "service", "6.0.0")
+
+    allowUrl("https://github.com/patrykmichalik/opto/blob/master/LICENSE")
+    allowUrl("https://github.com/RikkaApps/HiddenApiRefinePlugin/blob/main/LICENSE")
+    allowUrl("https://opensource.org/licenses/mit-license.php")
+    allowUrl("https://firebase.google.com/terms")
+    allowUrl("https://www.apache.org/licenses/LICENSE-2.0")
+    allowUrl("https://developer.android.com/studio/terms.html")
+    allowUrl("https://github.com/Vungle/Android-SDK/blob/master/LICENSE.md")
+    allowUrl("https://github.com/StartApp-SDK/startio-android-inapp-sdk/blob/master/LICENSE")
+    allowUrl("https://taurusx.com/sdklicense")
+    allowUrl("https://unity3d.com/legal/monetization-services-terms-of-service")
+    allowUrl("https://storage.cloud.google.com/chromium-cronet/android/72.0.3626.96/Release/cronet/LICENSE")
+    bundleAndroidAsset = true
+
+    ignoreDependencies("com.thinkup.sdk")
+    ignoreDependencies("co.ogury")
+    ignoreDependencies("com.amazon.android")
+    ignoreDependencies("com.applovin")
+    ignoreDependencies("com.chartboost")
+    ignoreDependencies("com.explorestack")
+    ignoreDependencies("com.fyber")
+    ignoreDependencies("com.huawei.hms")
+    ignoreDependencies("com.inmobi.monetization")
+    ignoreDependencies("com.inmobi.omsdk")
+    ignoreDependencies("com.ironsource.sdk")
+    ignoreDependencies("com.maio")
+    ignoreDependencies("com.mi.ads")
+    ignoreDependencies("com.my.target")
+    ignoreDependencies("com.my.tracker")
+    ignoreDependencies("com.pangle.global")
+    ignoreDependencies("com.smaato.android.sdk")
+    ignoreDependencies("com.taurusx.omsdk")
+    ignoreDependencies("io.bidmachine")
+    ignoreDependencies("net.kidoz.sdk")
+    ignoreDependencies("net.pubnative")
+    ignoreDependencies("org.chromium.net")
+    ignoreDependencies("io.bidmachine.media3")
+    ignoreDependencies("com.unity3d.ads")
+    ignoreDependencies("io.bidmachine.libs")
+    ignoreDependencies("co.ogury.module")
+    ignoreDependencies("com.fyber.omsdk")
+}
+
+// ===== 仅对 app 模块的变体逻辑（AGP 8 API），避免 library 报错 =====
+plugins.withId('com.android.application') {
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            def channel = variant.productFlavors.find { it.first == "channel" }?.second ?: "noChannel"
+            def bt     = variant.buildType
+            def vName  = variant.outputs.first().versionName.getOrNull() ?: "0.0.0"
+            def vCode  = variant.outputs.first().versionCode.getOrNull() ?: 0
+            variant.outputs.each { out ->
+                out.outputFileName.set("Desktop.${vName}.apk")
+            }
+        }
+    }
+
+}

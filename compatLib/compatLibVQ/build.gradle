@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace "app.desktop.compatlib.ten"
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+addFrameworkJar('framework-10.jar')
+
+dependencies {
+    api projects.compatLib
+}
