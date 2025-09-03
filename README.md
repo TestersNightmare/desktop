@@ -1,4 +1,4 @@
-# Lawnchair 15
+Desktop 15
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/device-frame.jpg" width="250px">
     <img alt="Desktop Launcher" src="docs/assets/device-frame.jpg" width="250px">
