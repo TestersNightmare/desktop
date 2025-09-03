@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Android Studio
 *.iml
 .gradle
@@ -44,10 +45,16 @@ release/
 build/
 .idea
 .kotlin
+=======
+# Gradle files
+.gradle/
+build/
+>>>>>>> 11b10cb853524fcfc62a80bc005730e7754dccd2
 
 # Local configuration file (sdk path, etc)
 local.properties
 
+<<<<<<< HEAD
 # Log Files
 *.log
 
@@ -69,11 +76,31 @@ captures/
 .idea/caches
 .idea/modules.xml
 .idea/navEditor.xml
+=======
+# Log/OS Files
+*.log
+
+# Android Studio generated files and folders
+captures/
+.externalNativeBuild/
+.cxx/
+*.aab
+*.apk
+output-metadata.json
+
+# IntelliJ
+*.iml
+.idea/
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+>>>>>>> 11b10cb853524fcfc62a80bc005730e7754dccd2
 
 # Keystore files
 *.jks
 *.keystore
 
+<<<<<<< HEAD
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
 .cxx/
@@ -101,3 +128,10 @@ fastlane/readme.md
 *.temp
 .metadata
 .recommenders
+=======
+# Google Services (e.g. APIs or Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof
+>>>>>>> 11b10cb853524fcfc62a80bc005730e7754dccd2
