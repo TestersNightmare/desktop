@@ -113,45 +113,67 @@ class DesktopApp : Application() {
 
     private fun copyDatabaseIfFirstRun() {
         val prefs = getSharedPreferences("init", Context.MODE_PRIVATE)
-            val isFirstRun = prefs.getBoolean("isFirstRun", true)
+        val isFirstRun = prefs.getBoolean("isFirstRun", true)
 
-            if (!isFirstRun) {
-                Log.d("DB_INIT", "已复制过数据库，跳过")
-                return
-            }
+        if (!isFirstRun) {
+            Log.d("DB_INIT", "已复制过数据库和首选项，跳过")
+            return
+        }
 
-            try {
-                // 1. 列出 assets 根目录下所有 .db 文件
-                val dbFiles = assets.list("")?.filter { it.endsWith(".db", ignoreCase = true) }
-                    ?: emptyList()
+        try {
+            // 1. 列出 assets 根目录下所有 .db 文件和 preferences.preferences_pb
+            val assetFiles = assets.list("") ?: emptyArray()
+            val dbFiles = assetFiles.filter { it.endsWith(".db", ignoreCase = true) }
+            val prefFile = assetFiles.find { it == "preferences.preferences_pb" }
 
-                if (dbFiles.isEmpty()) {
-                    Log.w("DB_INIT", "assets 目录下没有发现 .db 文件")
-                } else {
-                    // 2. 确保 databases 目录存在
-                    val dbDir = getDatabasePath("dummy.db").parentFile
-                    if (dbDir != null && !dbDir.exists()) {
-                        dbDir.mkdirs()
-                    }
-
-                    // 3. 逐个拷贝
-                    dbFiles.forEach { fileName ->
-                        val outFile = File(dbDir, fileName)
-                        assets.open(fileName).use { input ->
-                            FileOutputStream(outFile).use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                        Log.d("DB_INIT", "已复制数据库: $fileName → ${outFile.absolutePath}")
-                    }
+            // 2. 复制数据库文件
+            if (dbFiles.isEmpty()) {
+                Log.w("DB_INIT", "assets 目录下没有发现 .db 文件")
+            } else {
+                // 确保 databases 目录存在
+                val dbDir = getDatabasePath("dummy.db").parentFile
+                if (dbDir != null && !dbDir.exists()) {
+                    dbDir.mkdirs()
                 }
 
-                // 4. 标记已完成
-                prefs.edit().putBoolean("isFirstRun", false).apply()
-                Log.d("DB_INIT", "数据库拷贝完成，标记首次运行结束")
+                // 逐个拷贝 .db 文件
+                dbFiles.forEach { fileName ->
+                    val outFile = File(dbDir, fileName)
+                    assets.open(fileName).use { input ->
+                        FileOutputStream(outFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Log.d("DB_INIT", "已复制数据库: $fileName → ${outFile.absolutePath}")
+                }
+            }
 
-            } catch (e: Exception) {
-                Log.e("DB_INIT", "批量复制数据库失败", e)
+            // 3. 复制 preferences.preferences_pb 文件
+            if (prefFile != null) {
+                // 确保 /files/datastore 目录存在
+                val dataStoreDir = File(getFilesDir(), "datastore")
+                if (!dataStoreDir.exists()) {
+                    dataStoreDir.mkdirs()
+                }
+
+                // 复制文件
+                val outFile = File(dataStoreDir, "preferences.preferences_pb")
+                assets.open(prefFile).use { input ->
+                    FileOutputStream(outFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d("DB_INIT", "已复制首选项: $prefFile → ${outFile.absolutePath}")
+            } else {
+                Log.d("DB_INIT", "assets 目录下没有发现 preferences.preferences_pb 文件")
+            }
+
+            // 4. 标记已完成
+            prefs.edit().putBoolean("isFirstRun", false).apply()
+            Log.d("DB_INIT", "数据库和首选项拷贝完成，标记首次运行结束")
+
+        } catch (e: Exception) {
+            Log.e("DB_INIT", "批量复制数据库或首选项失败", e)
         }
     }
 

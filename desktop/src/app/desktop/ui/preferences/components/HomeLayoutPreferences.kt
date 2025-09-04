@@ -60,27 +60,30 @@ fun HomeLayoutSettings(
         label = stringResource(R.string.layout),
         checked = deskLayout.state.value,
         onCheckedChange = { newValue ->
-            isLoading = true
-            deskLayout.onChange(newValue)
-            if (newValue) {
-                coroutineScope.launch {
-                    swipeUpGesture.onChange(GestureHandlerConfig.NoOp)
-                    addNewAppToHome.onChange(true)
-                    withContext(Dispatchers.IO) {
-                        deckManager.enableLawndeck()
-                        isLoading = false
+            if (newValue != deskLayout.state.value && !isLoading) { // 防止重复点击和加载中点击
+                isLoading = true
+                deskLayout.onChange(newValue)
+                if (newValue) {
+                    coroutineScope.launch {
+                        swipeUpGesture.onChange(GestureHandlerConfig.NoOp)
+                        addNewAppToHome.onChange(true)
+                        withContext(Dispatchers.IO) {
+                            deckManager.enableLawndeck()
+                            isLoading = false
+                        }
                     }
-                }
-            } else {
-                coroutineScope.launch {
-                    swipeUpGesture.onChange(GestureHandlerConfig.OpenAppDrawer)
-                    withContext(Dispatchers.IO) {
-                        deckManager.disableLawndeck()
-                        isLoading = false
+                } else {
+                    coroutineScope.launch {
+                        swipeUpGesture.onChange(GestureHandlerConfig.OpenAppDrawer)
+                        withContext(Dispatchers.IO) {
+                            deckManager.disableLawndeck()
+                            isLoading = false
+                        }
                     }
                 }
             }
         },
+        enabled = !isLoading, // 加载时禁用开关
         disabledLabel = stringResource(R.string.feed_default),
         disabledContent = {
             PreviewLayout(
