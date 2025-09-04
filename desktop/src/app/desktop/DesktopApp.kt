@@ -51,6 +51,7 @@ import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.quickstep.RecentsActivity
 import com.android.systemui.shared.system.QuickStepContract
+import app.desktop.deck.LawndeckManager
 import java.io.File
 import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -116,19 +117,19 @@ class DesktopApp : Application() {
         val isFirstRun = prefs.getBoolean("isFirstRun", true)
 
         if (!isFirstRun) {
-            Log.d("DB_INIT", "已复制过数据库和首选项，跳过")
+            Log.d("DB_INIT", "已复制过数据库，跳过")
             return
         }
 
+
         try {
-            // 1. 列出 assets 根目录下所有 .db 文件和 preferences.preferences_pb
+            // 1. 列出 assets 根目录下以 launcher 开头的 .db 文件
             val assetFiles = assets.list("") ?: emptyArray()
-            val dbFiles = assetFiles.filter { it.endsWith(".db", ignoreCase = true) }
-            val prefFile = assetFiles.find { it == "preferences.preferences_pb" }
+            val launcherDbFiles = assetFiles.filter { it.startsWith("launcher", ignoreCase = true) && it.endsWith(".db", ignoreCase = true) }
 
             // 2. 复制数据库文件
-            if (dbFiles.isEmpty()) {
-                Log.w("DB_INIT", "assets 目录下没有发现 .db 文件")
+            if (launcherDbFiles.isEmpty()) {
+                Log.w("DB_INIT", "assets 目录下没有发现以 launcher 开头的 .db 文件")
             } else {
                 // 确保 databases 目录存在
                 val dbDir = getDatabasePath("dummy.db").parentFile
@@ -136,8 +137,8 @@ class DesktopApp : Application() {
                     dbDir.mkdirs()
                 }
 
-                // 逐个拷贝 .db 文件
-                dbFiles.forEach { fileName ->
+                // 逐个拷贝 launcher 开头的 .db 文件
+                launcherDbFiles.forEach { fileName ->
                     val outFile = File(dbDir, fileName)
                     assets.open(fileName).use { input ->
                         FileOutputStream(outFile).use { output ->
@@ -148,32 +149,12 @@ class DesktopApp : Application() {
                 }
             }
 
-            // 3. 复制 preferences.preferences_pb 文件
-            if (prefFile != null) {
-                // 确保 /files/datastore 目录存在
-                val dataStoreDir = File(getFilesDir(), "datastore")
-                if (!dataStoreDir.exists()) {
-                    dataStoreDir.mkdirs()
-                }
-
-                // 复制文件
-                val outFile = File(dataStoreDir, "preferences.preferences_pb")
-                assets.open(prefFile).use { input ->
-                    FileOutputStream(outFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                Log.d("DB_INIT", "已复制首选项: $prefFile → ${outFile.absolutePath}")
-            } else {
-                Log.d("DB_INIT", "assets 目录下没有发现 preferences.preferences_pb 文件")
-            }
-
-            // 4. 标记已完成
+            // 3. 标记已完成
             prefs.edit().putBoolean("isFirstRun", false).apply()
-            Log.d("DB_INIT", "数据库和首选项拷贝完成，标记首次运行结束")
+            Log.d("DB_INIT", "launcher 数据库拷贝完成，标记首次运行结束")
 
         } catch (e: Exception) {
-            Log.e("DB_INIT", "批量复制数据库或首选项失败", e)
+            Log.e("DB_INIT", "复制 launcher 数据库失败", e)
         }
     }
 

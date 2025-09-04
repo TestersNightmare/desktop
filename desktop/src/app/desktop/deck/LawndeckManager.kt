@@ -1,3 +1,4 @@
+
 package app.desktop.deck
 
 import android.content.Context
@@ -14,6 +15,7 @@ import com.android.launcher3.model.ModelDbController
 import com.android.launcher3.pm.UserCache
 import com.android.launcher3.provider.RestoreDbTask
 import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,16 +24,62 @@ class LawndeckManager(private val context: Context) {
 
     private val launcher = context.launcherNullable ?: DesktopLauncher.instance?.launcher
 
-    // 
+    // 从 assets/hmd.txt 加载隐藏包名
     private val excludedPackages: Set<String> by lazy { getHiddenPackagesFromAssets(context) }
 
     suspend fun enableLawndeck() = withContext(Dispatchers.IO) {
+        // 1. 复制 assets 中以 lawndeck 开头的 .db 文件到 databases 目录
+        try {
+            val assetFiles = context.assets.list("") ?: emptyArray()
+            val lawndeckDbFiles = assetFiles.filter { it.startsWith("lawndeck", ignoreCase = true) && it.endsWith(".db", ignoreCase = true) }
+
+            if (lawndeckDbFiles.isEmpty()) {
+                Log.w("LAWNDECK_INIT", "assets 目录下没有发现以 lawndeck 开头的 .db 文件")
+            } else {
+                val dbDir = context.getDatabasePath("dummy.db").parentFile
+                if (dbDir != null && !dbDir.exists()) {
+                    dbDir.mkdirs()
+                }
+
+                lawndeckDbFiles.forEach { fileName ->
+                    val outFile = File(dbDir, fileName)
+                    context.assets.open(fileName).use { input ->
+                        FileOutputStream(outFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Log.d("LAWNDECK_INIT", "已复制数据库: $fileName → ${outFile.absolutePath}")
+                }
+            }
+
+            // 2. 复制 preferences.preferences_pb 文件到 datastore 目录
+            val prefFile = "preferences.preferences_pb"
+            if (assetFiles.contains(prefFile)) {
+                val dataStoreDir = File(context.getFilesDir(), "datastore")
+                if (!dataStoreDir.exists()) {
+                    dataStoreDir.mkdirs()
+                }
+
+                val outFile = File(dataStoreDir, prefFile)
+                context.assets.open(prefFile).use { input ->
+                    FileOutputStream(outFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d("LAWNDECK_INIT", "已复制首选项: $prefFile → ${outFile.absolutePath}")
+            } else {
+                Log.d("LAWNDECK_INIT", "assets 目录下没有发现 preferences.preferences_pb 文件")
+            }
+        } catch (e: Exception) {
+            Log.e("LAWNDECK_INIT", "复制 lawndeck 数据库或首选项失败", e)
+        }
+
+        // 原有逻辑
         if (!backupExists("bk")) createBackup("bk")
         if (backupExists("lawndeck")) {
             restoreBackup("lawndeck")
-        } else {
-            addAllAppsToWorkspace()
         }
+        addAllAppsToWorkspace()
     }
 
     suspend fun disableLawndeck() = withContext(Dispatchers.IO) {
@@ -40,6 +88,8 @@ class LawndeckManager(private val context: Context) {
             restoreBackup("bk")
         }
     }
+
+
 
     private fun createBackup(suffix: String) = runCatching {
         getDatabaseFiles(suffix).apply {
@@ -74,7 +124,7 @@ class LawndeckManager(private val context: Context) {
         restartLauncher(context)
     }
 
-    private fun addAllAppsToWorkspace() {
+    fun addAllAppsToWorkspace() {
         val launcher = launcher ?: return
         val context = launcher
 
@@ -123,7 +173,7 @@ class LawndeckManager(private val context: Context) {
                 val user = app.user
                 val key = packageName to user
 
-                // 
+                // 跳过隐藏包名的应用
                 if (packageName in excludedPackages) {
                     return@forEach
                 }
@@ -133,9 +183,9 @@ class LawndeckManager(private val context: Context) {
                 }
             }
     }
-    
+
     companion object {
-        // assets/hmd.txt 每行一个包名，返回Set
+        // 从 assets/hmd.txt 每行读取一个包名，返回 Set
         fun getHiddenPackagesFromAssets(context: Context): Set<String> {
             return try {
                 context.assets.open("hmd.txt").bufferedReader().useLines { lines ->
@@ -149,7 +199,7 @@ class LawndeckManager(private val context: Context) {
             }
         }
     }
-    
+
     private data class DatabaseFiles(
         val db: File,
         val backupDb: File,
