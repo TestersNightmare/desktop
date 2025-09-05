@@ -1,7 +1,12 @@
+#test用test的值
 {
-    "adSettings": {
+    "adTest": {
       "showAd": true,
       "showDuration": 1
+    },
+    "adSettings": {
+      "showAd": true,
+      "showDuration": 30
     },
     "userSettings": {
       "theme": "dark",
